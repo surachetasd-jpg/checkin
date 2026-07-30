@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>เช็คอินเข้างาน</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, "Helvetica Neue", "Noto Sans Thai", sans-serif;
+      background: #f5f6f8;
+      margin: 0;
+    }
+    .box {
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 56px 24px;
+      text-align: center;
+    }
+    .icon { font-size: 56px; margin-bottom: 18px; }
+    .msg {
+      font-size: 17px;
+      line-height: 1.7;
+      color: #1a1a1a;
+      white-space: pre-wrap;
+    }
+    .sub {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #888;
+      margin-top: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .ok { color: #12874a; }
+    .err { color: #c8372d; }
+    button {
+      margin-top: 28px;
+      padding: 13px 32px;
+      font-size: 16px;
+      font-family: inherit;
+      border: 0;
+      border-radius: 8px;
+      background: #06c755;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="icon" id="icon">&#8987;</div>
+    <div class="msg" id="msg">กำลังเตรียมข้อมูล...</div>
+    <div class="sub" id="sub"></div>
+    <button id="retry" style="display:none" onclick="start()">ลองใหม่</button>
+  </div>
+
+<script>
+  /* ===== แก้ 2 บรรทัดนี้ ===== */
+  var LIFF_ID = '2010901737-GCMswonP';
+  var WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbymY1K2a5K8Jp0yXrwGWsxo8HvvTKFo0-75C6DzhQU7uHNXfG2C_pFo8UztOf-djX0Z/exec';
+  /* =========================== */
+
+  var idToken = '';
+
+  function setStatus(icon, msg, sub, cls) {
+    document.getElementById('icon').innerHTML = icon;
+    document.getElementById('msg').innerText = msg;
+    document.getElementById('msg').className = 'msg ' + (cls || '');
+    document.getElementById('sub').innerText = sub || '';
+  }
+
+  function showRetry(show) {
+    document.getElementById('retry').style.display = show ? 'inline-block' : 'none';
+  }
+
+  // ขอตำแหน่งจาก GPS ของเครื่องโดยตรง ไม่มีหน้าจอให้ลากหมุดเอง
+  function start() {
+    showRetry(false);
+    setStatus('&#128205;', 'กำลังอ่านตำแหน่งปัจจุบัน...', 'กรุณาอนุญาตให้เข้าถึงตำแหน่ง');
+
+    if (!navigator.geolocation) {
+      setStatus('&#10060;', 'อุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง', '', 'err');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        send(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      },
+      function (err) {
+        setStatus('&#128205;', 'ไม่สามารถอ่านตำแหน่งได้',
+          'กรุณาเปิด GPS และอนุญาตให้ LINE เข้าถึงตำแหน่ง\nจากนั้นกดลองใหม่\n\n(' + err.message + ')', 'err');
+        showRetry(true);
+      },
+      // maximumAge: 0 บังคับให้อ่านค่าใหม่สดๆ ไม่ใช้ค่าที่เครื่องเก็บไว้
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }
+
+  // ส่งข้อมูลด้วยวิธี JSONP เพื่อเลี่ยงปัญหาการเรียกข้ามโดเมน
+  function send(lat, lng, accuracy) {
+    setStatus('&#8987;', 'กำลังบันทึกเวลาเข้างาน...', '');
+
+    var cbName = 'cb' + Date.now();
+    var script = document.createElement('script');
+    var finished = false;
+
+    var timer = setTimeout(function () {
+      if (finished) { return; }
+      finished = true;
+      cleanup();
+      setStatus('&#10060;', 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ',
+        'กรุณาตรวจสอบสัญญาณอินเทอร์เน็ต แล้วลองใหม่', 'err');
+      showRetry(true);
+    }, 25000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+      if (script.parentNode) { script.parentNode.removeChild(script); }
+    }
+
+    window[cbName] = function (data) {
+      if (finished) { return; }
+      finished = true;
+      cleanup();
+
+      if (data && data.ok) {
+        setStatus('&#9989;', data.message, 'หน้าต่างนี้จะปิดเองใน 5 วินาที', 'ok');
+        setTimeout(function () { liff.closeWindow(); }, 5000);
+      } else {
+        setStatus('&#9888;', (data && data.message) ? data.message : 'บันทึกไม่สำเร็จ', '', 'err');
+        showRetry(true);
+      }
+    };
+
+    script.onerror = function () {
+      if (finished) { return; }
+      finished = true;
+      cleanup();
+      setStatus('&#10060;', 'ติดต่อเซิร์ฟเวอร์ไม่ได้',
+        'กรุณาตรวจสอบว่า Web app URL ถูกต้อง และตั้ง Who has access เป็น Anyone', 'err');
+      showRetry(true);
+    };
+
+    script.src = WEB_APP_URL +
+      '?action=checkin' +
+      '&idToken=' + encodeURIComponent(idToken) +
+      '&lat=' + encodeURIComponent(lat) +
+      '&lng=' + encodeURIComponent(lng) +
+      '&accuracy=' + encodeURIComponent(accuracy) +
+      '&callback=' + cbName;
+
+    document.body.appendChild(script);
+  }
+
+  function checkConfig() {
+    if (!LIFF_ID || LIFF_ID.indexOf('ใส่') === 0 || !/^\d+-\w+$/.test(LIFF_ID)) {
+      setStatus('&#9888;', 'ยังไม่ได้ตั้งค่า LIFF ID',
+        'แก้บรรทัด var LIFF_ID ในไฟล์ index.html\nค่าปัจจุบัน: "' + LIFF_ID + '"', 'err');
+      return false;
+    }
+    if (!WEB_APP_URL || WEB_APP_URL.indexOf('https://') !== 0) {
+      setStatus('&#9888;', 'ยังไม่ได้ตั้งค่า Web app URL',
+        'แก้บรรทัด var WEB_APP_URL ในไฟล์ index.html\nค่าปัจจุบัน: "' + WEB_APP_URL + '"', 'err');
+      return false;
+    }
+    return true;
+  }
+
+  if (checkConfig()) {
+    liff.init({ liffId: LIFF_ID })
+      .then(function () {
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+        idToken = liff.getIDToken();
+        if (!idToken) {
+          setStatus('&#9888;', 'ไม่ได้รับข้อมูลยืนยันตัวตน',
+            'กรุณาตรวจว่า LIFF app ติ๊ก Scope openid ไว้แล้ว', 'err');
+          return;
+        }
+        start();
+      })
+      .catch(function (e) {
+        setStatus('&#10060;', 'เชื่อมต่อ LINE ไม่สำเร็จ',
+          'LIFF ID ที่ใช้: ' + LIFF_ID + '\n\nรายละเอียด: ' + String(e), 'err');
+      });
+  }
+</script>
+</body>
+</html>
