@@ -52,6 +52,10 @@
     <label>ชื่อ-นามสกุล <span class="hint">(ชื่อจริง)</span></label>
     <input type="text" id="name" placeholder="สมชาย ใจดี" maxlength="50">
 
+    <label>ตำแหน่ง <span class="hint">(เลือกจากรายการ หรือพิมพ์เอง)</span></label>
+    <input type="text" id="position" list="positionList" placeholder="แตะเพื่อเลือก" maxlength="40">
+    <datalist id="positionList"></datalist>
+
     <label>วันเดือนปีเกิด</label>
     <input type="date" id="birth">
 
@@ -64,13 +68,14 @@
 
   <div class="box" id="done" style="display:none">
     <div class="center">
-      <div class="icon" id="doneicon">&#9989;</div>
+      <div class="icon">&#9989;</div>
       <div class="msg ok" id="donemsg"></div>
     </div>
   </div>
 
 <script>
-  /* ===== แก้ 2 บรรทัดนี้ ===== */
+register.html
+/* ===== แก้ 2 บรรทัดนี้ ===== */
     var LIFF_ID = '2010901737-GCMswonP';
   var WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbymY1K2a5K8Jp0yXrwGWsxo8HvvTKFo0-75C6DzhQU7uHNXfG2C_pFo8UztOf-djX0Z/exec';
   /* =========================== */
@@ -143,14 +148,28 @@
     return p[2] + '-' + ('0' + p[1]).slice(-2) + '-' + ('0' + p[0]).slice(-2);
   }
 
+  // เติมรายการตำแหน่งที่ดึงมาจาก Apps Script
+  function fillPositions(list) {
+    if (!list || !list.length) { return; }
+    var dl = document.getElementById('positionList');
+    dl.innerHTML = '';
+    for (var i = 0; i < list.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = list[i];
+      dl.appendChild(opt);
+    }
+  }
+
   function submitForm() {
     hideError();
 
     var name = document.getElementById('name').value.trim();
+    var position = document.getElementById('position').value.trim();
     var birth = document.getElementById('birth').value;
     var phone = document.getElementById('phone').value.replace(/[^0-9]/g, '');
 
     if (name.length < 2) { showError('กรุณากรอกชื่อ-นามสกุล'); return; }
+    if (position.length < 2) { showError('กรุณาเลือกหรือพิมพ์ตำแหน่ง'); return; }
     if (!birth) { showError('กรุณาเลือกวันเดือนปีเกิด'); return; }
     if (phone.length < 9 || phone.length > 10) {
       showError('เบอร์โทรศัพท์ไม่ถูกต้อง กรุณากรอก 9-10 หลัก');
@@ -162,7 +181,14 @@
     btn.innerText = 'กำลังบันทึก...';
 
     callServer(
-      { action: 'register', idToken: idToken, name: name, birth: birth, phone: phone },
+      {
+        action: 'register',
+        idToken: idToken,
+        name: name,
+        position: position,
+        birth: birth,
+        phone: phone
+      },
       function (data) {
         if (data && data.ok) {
           document.getElementById('donemsg').innerText = data.message;
@@ -183,14 +209,17 @@
   }
 
   function loadProfileThenShowForm() {
-    // ถ้าเคยลงทะเบียนแล้ว ดึงข้อมูลเดิมมาเติมในฟอร์ม
     callServer(
       { action: 'profile', idToken: idToken },
       function (data) {
-        if (data && data.ok && data.profile) {
-          document.getElementById('name').value = data.profile.name || '';
-          document.getElementById('birth').value = toInputDate(data.profile.birth || '');
-          document.getElementById('phone').value = data.profile.phone || '';
+        if (data && data.ok) {
+          fillPositions(data.positions);
+          if (data.profile) {
+            document.getElementById('name').value = data.profile.name || '';
+            document.getElementById('position').value = data.profile.position || '';
+            document.getElementById('birth').value = toInputDate(data.profile.birth || '');
+            document.getElementById('phone').value = data.profile.phone || '';
+          }
         }
         show('form');
       },
