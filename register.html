@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ลงทะเบียนพนักงาน</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", "Noto Sans Thai", sans-serif;
+      background: #f5f6f8;
+      margin: 0;
+    }
+    .box { max-width: 420px; margin: 0 auto; padding: 32px 24px 48px; }
+    h1 { font-size: 20px; margin: 0 0 6px; color: #1a1a1a; }
+    .lead { font-size: 14px; color: #777; margin: 0 0 26px; line-height: 1.6; }
+    label { display: block; font-size: 14px; color: #444; margin: 0 0 6px; font-weight: 600; }
+    .hint { font-weight: 400; color: #999; font-size: 12px; }
+    input {
+      width: 100%; padding: 13px 14px; font-size: 16px; font-family: inherit;
+      border: 1px solid #d8dade; border-radius: 8px; background: #fff; margin-bottom: 20px;
+    }
+    input:focus { outline: 2px solid #06c755; border-color: transparent; }
+    button {
+      width: 100%; padding: 15px; font-size: 17px; font-family: inherit; font-weight: 600;
+      border: 0; border-radius: 8px; background: #06c755; color: #fff;
+    }
+    button:disabled { background: #c4c7cc; }
+    .note { font-size: 12px; color: #999; margin-top: 18px; line-height: 1.6; text-align: center; }
+    .err { color: #c8372d; font-size: 14px; margin-bottom: 16px; white-space: pre-wrap; }
+    .center { text-align: center; padding-top: 60px; }
+    .icon { font-size: 56px; margin-bottom: 18px; }
+    .msg { font-size: 17px; line-height: 1.7; white-space: pre-wrap; }
+    .ok { color: #12874a; }
+  </style>
+</head>
+<body>
+  <div class="box" id="loading">
+    <div class="center">
+      <div class="icon">&#8987;</div>
+      <div class="msg" id="loadmsg">กำลังเตรียมข้อมูล...</div>
+    </div>
+  </div>
+
+  <div class="box" id="form" style="display:none">
+    <h1>ลงทะเบียนพนักงาน</h1>
+    <p class="lead">กรอกข้อมูลครั้งเดียว ใช้ได้ตลอด<br>ข้อมูลนี้ใช้สำหรับงานบุคคลเท่านั้น</p>
+
+    <div class="err" id="err" style="display:none"></div>
+
+    <label>ชื่อ-นามสกุล <span class="hint">(ชื่อจริง)</span></label>
+    <input type="text" id="name" placeholder="สมชาย ใจดี" maxlength="50">
+
+    <label>วันเดือนปีเกิด</label>
+    <input type="date" id="birth">
+
+    <label>เบอร์โทรศัพท์</label>
+    <input type="tel" id="phone" placeholder="0812345678" inputmode="numeric" maxlength="20">
+
+    <button id="submit" onclick="submitForm()">บันทึกข้อมูล</button>
+    <p class="note">กดบันทึกแล้วหน้านี้จะปิดเอง<br>แก้ไขภายหลังได้โดยพิมพ์ "ลงทะเบียน" ในแชท</p>
+  </div>
+
+  <div class="box" id="done" style="display:none">
+    <div class="center">
+      <div class="icon" id="doneicon">&#9989;</div>
+      <div class="msg ok" id="donemsg"></div>
+    </div>
+  </div>
+
+<script>
+  /* ===== แก้ 2 บรรทัดนี้ ===== */
+    var LIFF_ID = '2010901737-GCMswonP';
+  var WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbymY1K2a5K8Jp0yXrwGWsxo8HvvTKFo0-75C6DzhQU7uHNXfG2C_pFo8UztOf-djX0Z/exec';
+  /* =========================== */
+
+  var idToken = '';
+
+  function show(id) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('form').style.display = 'none';
+    document.getElementById('done').style.display = 'none';
+    document.getElementById(id).style.display = 'block';
+  }
+
+  function showError(text) {
+    var el = document.getElementById('err');
+    el.innerText = text;
+    el.style.display = 'block';
+    window.scrollTo(0, 0);
+  }
+
+  function hideError() {
+    document.getElementById('err').style.display = 'none';
+  }
+
+  // เรียก Apps Script ด้วยวิธี JSONP เพื่อเลี่ยงปัญหาการเรียกข้ามโดเมน
+  function callServer(params, onDone, onFail) {
+    var cbName = 'cb' + Date.now();
+    var script = document.createElement('script');
+    var finished = false;
+
+    var timer = setTimeout(function () {
+      if (finished) { return; }
+      finished = true;
+      cleanup();
+      onFail('เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาลองใหม่');
+    }, 25000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+      if (script.parentNode) { script.parentNode.removeChild(script); }
+    }
+
+    window[cbName] = function (data) {
+      if (finished) { return; }
+      finished = true;
+      cleanup();
+      onDone(data);
+    };
+
+    script.onerror = function () {
+      if (finished) { return; }
+      finished = true;
+      cleanup();
+      onFail('ติดต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต');
+    };
+
+    var url = WEB_APP_URL + '?callback=' + cbName;
+    for (var key in params) {
+      url += '&' + key + '=' + encodeURIComponent(params[key]);
+    }
+    script.src = url;
+    document.body.appendChild(script);
+  }
+
+  // แปลง dd/MM/yyyy เป็น yyyy-MM-dd สำหรับช่อง input type=date
+  function toInputDate(thaiDate) {
+    var p = String(thaiDate).split('/');
+    if (p.length !== 3) { return ''; }
+    return p[2] + '-' + ('0' + p[1]).slice(-2) + '-' + ('0' + p[0]).slice(-2);
+  }
+
+  function submitForm() {
+    hideError();
+
+    var name = document.getElementById('name').value.trim();
+    var birth = document.getElementById('birth').value;
+    var phone = document.getElementById('phone').value.replace(/[^0-9]/g, '');
+
+    if (name.length < 2) { showError('กรุณากรอกชื่อ-นามสกุล'); return; }
+    if (!birth) { showError('กรุณาเลือกวันเดือนปีเกิด'); return; }
+    if (phone.length < 9 || phone.length > 10) {
+      showError('เบอร์โทรศัพท์ไม่ถูกต้อง กรุณากรอก 9-10 หลัก');
+      return;
+    }
+
+    var btn = document.getElementById('submit');
+    btn.disabled = true;
+    btn.innerText = 'กำลังบันทึก...';
+
+    callServer(
+      { action: 'register', idToken: idToken, name: name, birth: birth, phone: phone },
+      function (data) {
+        if (data && data.ok) {
+          document.getElementById('donemsg').innerText = data.message;
+          show('done');
+          setTimeout(function () { liff.closeWindow(); }, 3000);
+        } else {
+          btn.disabled = false;
+          btn.innerText = 'บันทึกข้อมูล';
+          showError((data && data.message) ? data.message : 'บันทึกไม่สำเร็จ');
+        }
+      },
+      function (errText) {
+        btn.disabled = false;
+        btn.innerText = 'บันทึกข้อมูล';
+        showError(errText);
+      }
+    );
+  }
+
+  function loadProfileThenShowForm() {
+    // ถ้าเคยลงทะเบียนแล้ว ดึงข้อมูลเดิมมาเติมในฟอร์ม
+    callServer(
+      { action: 'profile', idToken: idToken },
+      function (data) {
+        if (data && data.ok && data.profile) {
+          document.getElementById('name').value = data.profile.name || '';
+          document.getElementById('birth').value = toInputDate(data.profile.birth || '');
+          document.getElementById('phone').value = data.profile.phone || '';
+        }
+        show('form');
+      },
+      function () { show('form'); }
+    );
+  }
+
+  function checkConfig() {
+    if (!LIFF_ID || LIFF_ID.indexOf('ใส่') === 0 || !/^\d+-\w+$/.test(LIFF_ID)) {
+      document.getElementById('loadmsg').innerText =
+        'ยังไม่ได้ตั้งค่า LIFF ID\nแก้บรรทัด var LIFF_ID ในไฟล์ register.html';
+      return false;
+    }
+    if (!WEB_APP_URL || WEB_APP_URL.indexOf('https://') !== 0) {
+      document.getElementById('loadmsg').innerText =
+        'ยังไม่ได้ตั้งค่า Web app URL\nแก้บรรทัด var WEB_APP_URL ในไฟล์ register.html';
+      return false;
+    }
+    return true;
+  }
+
+  if (checkConfig()) {
+    liff.init({ liffId: LIFF_ID })
+      .then(function () {
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+        idToken = liff.getIDToken();
+        if (!idToken) {
+          document.getElementById('loadmsg').innerText =
+            'ไม่ได้รับข้อมูลยืนยันตัวตน\nกรุณาตรวจว่า LIFF app ติ๊ก Scope openid ไว้แล้ว';
+          return;
+        }
+        loadProfileThenShowForm();
+      })
+      .catch(function (e) {
+        document.getElementById('loadmsg').innerText = 'เชื่อมต่อ LINE ไม่สำเร็จ\n' + String(e);
+      });
+  }
+</script>
+</body>
+</html>
