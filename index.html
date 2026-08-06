@@ -98,8 +98,11 @@
   }
 
   // ส่งข้อมูลด้วยวิธี JSONP เพื่อเลี่ยงปัญหาการเรียกข้ามโดเมน
-  function send(lat, lng, accuracy) {
-    setStatus('&#8987;', 'กำลังบันทึกเวลาเข้างาน...', '');
+  function sendWithRetry(lat, lng, accuracy, attempt) {
+    attempt = attempt || 1;
+    var maxAttempts = 3;
+
+    setStatus('&#8987;', 'กำลังบันทึกเวลาเข้างาน...' + (attempt > 1 ? ' (ลองครั้งที่ ' + attempt + ')' : ''), '');
 
     var cbName = 'cb' + Date.now();
     var script = document.createElement('script');
@@ -109,16 +112,58 @@
       if (finished) { return; }
       finished = true;
       cleanup();
-      setStatus('&#10060;', 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ',
-        'กรุณาตรวจสอบสัญญาณอินเทอร์เน็ต แล้วลองใหม่', 'err');
-      showRetry(true);
-    }, 25000);
+      retryOrFail();
+    }, 20000);   // ลดเหลือ 20 วิ ต่อรอบ เพราะจะลองซ้ำได้
 
     function cleanup() {
       clearTimeout(timer);
       try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
       if (script.parentNode) { script.parentNode.removeChild(script); }
     }
+
+    function retryOrFail() {
+      if (attempt < maxAttempts) {
+        setTimeout(function () {
+          sendWithRetry(lat, lng, accuracy, attempt + 1);
+        }, 1500);
+      } else {
+        setStatus('&#10060;', 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จหลังลอง ' + maxAttempts + ' ครั้ง',
+          'กรุณาตรวจสอบอินเทอร์เน็ต แล้วกดลองใหม่อีกครั้ง', 'err');
+        showRetry(true);
+      }
+    }
+
+    window[cbName] = function (data) {
+      if (finished) { return; }
+      finished = true;
+      cleanup();
+
+      if (data && data.ok) {
+        setStatus('&#9989;', data.message, 'หน้าต่างนี้จะปิดเองใน 5 วินาที', 'ok');
+        setTimeout(function () { liff.closeWindow(); }, 5000);
+      } else {
+        setStatus('&#9888;', (data && data.message) ? data.message : 'บันทึกไม่สำเร็จ', '', 'err');
+        showRetry(true);
+      }
+    };
+
+    script.onerror = function () {
+      if (finished) { return; }
+      finished = true;
+      cleanup();
+      retryOrFail();
+    };
+
+    script.src = WEB_APP_URL +
+      '?action=checkin' +
+      '&idToken=' + encodeURIComponent(idToken) +
+      '&lat=' + encodeURIComponent(lat) +
+      '&lng=' + encodeURIComponent(lng) +
+      '&accuracy=' + encodeURIComponent(accuracy) +
+      '&callback=' + cbName;
+
+    document.body.appendChild(script);
+  }
 
     window[cbName] = function (data) {
       if (finished) { return; }
