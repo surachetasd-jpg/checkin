@@ -100,23 +100,36 @@
   }
 
   // เรียก Apps Script ด้วยวิธี JSONP เพื่อเลี่ยงปัญหาการเรียกข้ามโดเมน
-  function callServer(params, onDone, onFail) {
+  function callServer(params, onDone, onFail, attempt) {
+    attempt = attempt || 1;
+    var maxAttempts = 3;
+
     var cbName = 'cb' + Date.now();
     var script = document.createElement('script');
     var finished = false;
-
-    var timer = setTimeout(function () {
-      if (finished) { return; }
-      finished = true;
-      cleanup();
-      onFail('เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาลองใหม่');
-    }, 25000);
 
     function cleanup() {
       clearTimeout(timer);
       try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
       if (script.parentNode) { script.parentNode.removeChild(script); }
     }
+
+    function retryOrFail() {
+      if (attempt < maxAttempts) {
+        setTimeout(function () {
+          callServer(params, onDone, onFail, attempt + 1);
+        }, 1500);
+      } else {
+        onFail('เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จหลังลอง ' + maxAttempts + ' ครั้ง กรุณาลองใหม่');
+      }
+    }
+
+    var timer = setTimeout(function () {
+      if (finished) { return; }
+      finished = true;
+      cleanup();
+      retryOrFail();
+    }, 20000);
 
     window[cbName] = function (data) {
       if (finished) { return; }
@@ -129,7 +142,7 @@
       if (finished) { return; }
       finished = true;
       cleanup();
-      onFail('ติดต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต');
+      retryOrFail();
     };
 
     var url = WEB_APP_URL + '?callback=' + cbName;
